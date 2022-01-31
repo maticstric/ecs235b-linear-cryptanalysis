@@ -20,66 +20,45 @@ KEY4 = [0xb, 0x5, 0x2, 0x0]
 
 
 def main():
-    #state = [0x4, 0xb, 0x1, 0xd];
-    #encrypted_state = encrypt(state, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4);
-    #print(state)
-    #print(encrypted_state)
+    state = [0x4, 0xb, 0x1, 0xd];
+    encrypted_state = encrypt(state, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4);
+    print(state)
+    print(encrypted_state)
 
+    # Find linear approximations for the SBOX
     linear_approximation_table = build_linear_approximation_table(SBOX)
     best_linear_approximations = sort_linear_approximations(linear_approximation_table)
     print(best_linear_approximations)
 
+    # Find linear approximations for the whole cipher
     num_of_linear_approximations = 100
-    #most_probable_linear_approximations = find_most_probable_linear_approximations(linear_approximation_table, num_of_linear_approximations)
+    most_probable_linear_approximations = find_most_probable_linear_approximations(best_linear_approximations, num_of_linear_approximations)
 
     #break_keys()
 
-def sort_linear_approximations(linear_approximation_table):
-    table_copy = [r.copy() for r in linear_approximation_table]
-    sorted_linear_approximations = []
+def find_linear_approximation(input_mask, best_linear_approximations):
+    input_mask_bits = split_nibbles_into_bits(input_mask)
+    print(input_mask_bits)
 
+def find_most_probable_linear_approximations(best_linear_approximations, num_of_linear_approximations):
+    linear_approximations = []
 
-    max = 0
-    max_row = None
-    max_col = None
+    for i in range(16):
+        for j in range(16):
+            for k in range(16):
+                for l in range(16):
+                    if i == 0 and j == 0 and k == 0 and l == 0: continue
 
-    while True: # We'll return once max < 4
-        for row in range(len(table_copy)):
-            for col in range(len(table_copy[row])):
-                if row == 0 and col == 0: continue
+                    input_mask = [i, j, k, l]
 
-                if abs(table_copy[row][col]) > max:
-                    max = abs(table_copy[row][col])
-                    max_row = row
-                    max_col = col
+                    find_linear_approximation(input_mask, best_linear_approximations)
+                    #rounds, probability = find_linear_approximation(input_mask, best_linear_approximations)
 
+                    #linear_approximations.append((probability, input_xor, most_probable_output_xor))
 
-        if max < 4: # Ignore anything less than 4. It's probably not biased enough
-            return sorted_linear_approximations
-        else:
-            sorted_linear_approximations.append((max_row, max_col, linear_approximation_table[max_row][max_col]))
-            table_copy[max_row][max_col] = 0
-            max = 0
+    #linear_approximations.sort(reverse=True)
 
-
-
-#def find_most_probable_linear_approximations(linear_approximation_table, num_of_linear_approximations):
-#    linear_approximations = []
-#
-#    for i in range(16):
-#        for j in range(16):
-#            for k in range(16):
-#                for l in range(16):
-#                    if i == 0 and j == 0 and k == 0 and l == 0: continue
-#
-#                    input_xor = [i, j, k, l]
-#                    most_probable_output_xor, probability = find_differential_trail(input_xor, diff_dist_table, round_num)
-#
-#                    differential_trails.append((probability, input_xor, most_probable_output_xor))
-#
-#    differential_trails.sort(reverse=True)
-#
-#    return differential_trails[:num_of_linear_approximations]
+    return linear_approximations[:num_of_linear_approximations]
 
 #def break_keys():
 #    key_count_dict = {}
@@ -156,10 +135,37 @@ def build_linear_approximation_table(sbox):
 
     return linear_approximation_table
 
+def sort_linear_approximations(linear_approximation_table):
+    table_copy = [r[:] for r in linear_approximation_table]
+    sorted_linear_approximations = []
+
+
+    max = 0
+    max_row = None
+    max_col = None
+
+    while True: # We'll return once max < 4
+        for row in range(len(table_copy)):
+            for col in range(len(table_copy[row])):
+                if row == 0 and col == 0: continue
+
+                if abs(table_copy[row][col]) > max:
+                    max = abs(table_copy[row][col])
+                    max_row = row
+                    max_col = col
+
+
+        if max < 4: # Ignore anything less than 4. It's probably not biased enough
+            return sorted_linear_approximations
+        else:
+            sorted_linear_approximations.append((max_row, max_col, linear_approximation_table[max_row][max_col]))
+            table_copy[max_row][max_col] = 0
+            max = 0
+
 """ SPN """
 
 def encrypt(state, sbox, pbox, key0, key1, key2, key3, key4):
-    new_state = state.copy()
+    new_state = state[:]
 
     new_state = add_round_key(new_state, key0)
     new_state = substitute(new_state, sbox)
@@ -181,7 +187,7 @@ def encrypt(state, sbox, pbox, key0, key1, key2, key3, key4):
     return new_state
 
 def substitute(state, sbox):
-    new_state = state.copy()
+    new_state = state[:]
     
     for i in range(len(state)):
         new_state[i] = SBOX[state[i]]
@@ -189,7 +195,7 @@ def substitute(state, sbox):
     return new_state
 def permutate(state, pbox):
     state_as_bits = split_nibbles_into_bits(state)
-    new_state_as_bits = state_as_bits.copy()
+    new_state_as_bits = state_as_bits[:]
 
     for i in range(len(state_as_bits)):
         new_state_as_bits[PBOX[i]] = state_as_bits[i]
@@ -197,7 +203,7 @@ def permutate(state, pbox):
     return combine_bits_into_nibbles(new_state_as_bits)
 
 def add_round_key(state, key):
-    new_state = state.copy()
+    new_state = state[:]
 
     for i in range(len(key)):
         new_state[i] = state[i] ^ key[i]
