@@ -3,9 +3,10 @@ from itertools import combinations
 
 """ --- You can edit the variables below --- """
 
-SBOX = [0x9, 0xb, 0xc, 0x4, 0xa, 0x1, 0x2, 0x6, 0xd, 0x7, 0x3, 0x8, 0xf, 0xe, 0x0, 0x5]
-#SBOX = [0xe, 0x4, 0xd, 0x1, 0x2, 0xf, 0xb, 0x8, 0x3, 0xa, 0x6, 0xc, 0x5, 0x9, 0x0, 0x7]
+#SBOX = [0x9, 0xb, 0xc, 0x4, 0xa, 0x1, 0x2, 0x6, 0xd, 0x7, 0x3, 0x8, 0xf, 0xe, 0x0, 0x5]
 #SBOX = [0x3, 0xe, 0x1, 0xa, 0x4, 0x9, 0x5, 0x6, 0x8, 0xb, 0xf, 0x2, 0xd, 0xc, 0x0, 0x7]
+SBOX = [0xe, 0x4, 0xd, 0x1, 0x2, 0xf, 0xb, 0x8, 0x3, 0xa, 0x6, 0xc, 0x5, 0x9, 0x0, 0x7]
+INV_SBOX = [0xe, 0x3, 0x4, 0x8, 0x1, 0xc, 0xa, 0xf, 0x7, 0xd, 0x9, 0x6, 0xb, 0x2, 0x0, 0x5]
 
 KEY0 = 0x7
 KEY1 = 0xe
@@ -17,9 +18,95 @@ def main():
     state = 0x4
 
     linear_approximation_table = build_linear_approximation_table(SBOX)
-    print(linear_approximation_table)
+    break_keys()
 
+    #print(linear_approximation_table)
     #print(encrypt(state, SBOX, KEY0, KEY1))
+
+#def break_keys():
+#    key_count_dict = {}
+#
+#    for plaintext in range(16):
+#        for key0_guess in range(16):
+#            ciphertext = encrypt(plaintext, SBOX, KEY0, KEY1)
+#
+#            partially_encrypted = add_round_key(plaintext, key0_guess)
+#            partially_encrypted = substitute(partially_encrypted, SBOX)
+#
+#            plaintext_bits = nibble_to_bits(plaintext)
+#            partially_encrypted_bits = nibble_to_bits(partially_encrypted)
+#
+#            if plaintext_bits[3] ^ partially_encrypted_bits[1] ^ partially_encrypted_bits[2] ^ partially_encrypted_bits[3] == 1:
+#                print(key1_guess)
+#                if key1_guess not in key_count_dict:
+#                    key_count_dict[key1_guess] = 1
+#                else:
+#                    key_count_dict[key1_guess] += 1
+#
+#    for key in sorted(key_count_dict):
+#        print("%s: %s" % (key, key_count_dict[key]))
+
+def break_keys():
+    key_count_dict = {}
+
+    for plaintext in range(16):
+        for key1_guess in range(16):
+            ciphertext = encrypt(plaintext, SBOX, KEY0, KEY1)
+
+            partially_decrypted = add_round_key(ciphertext, key1_guess)
+            partially_decrypted = substitute(partially_decrypted, INV_SBOX)
+
+            plaintext_bits = nibble_to_bits(plaintext)
+            partially_decrypted_bits = nibble_to_bits(partially_decrypted)
+
+            if plaintext_bits[3] ^ partially_decrypted_bits[1] ^ partially_decrypted_bits[2] ^ partially_decrypted_bits[3] == 1:
+                if key1_guess not in key_count_dict:
+                    key_count_dict[key1_guess] = 1
+                else:
+                    key_count_dict[key1_guess] += 1
+
+    for key in sorted(key_count_dict):
+        print("%s: %s" % (key, key_count_dict[key]))
+
+#def break_keys():
+#    key_count_dict = {}
+#
+#    for plaintext in range(16):
+#        for key1_guess in range(16):
+#            ciphertext = encrypt(plaintext, SBOX, KEY0, KEY1, KEY2)
+#
+#            partially_decrypted = add_round_key(ciphertext, key1_guess)
+#            partially_decrypted = substitute(partially_decrypted, INV_SBOX)
+#
+#            print(plaintext, ciphertext, key1_guess, partially_decrypted)
+#
+#            plaintext_bits = nibble_to_bits(plaintext)
+#            partially_decrypted_bits = nibble_to_bits(partially_decrypted)
+#
+#            if plaintext_bits[3] == partially_decrypted_bits[1] ^ partially_decrypted_bits[2] ^ partially_decrypted_bits[3]:
+#                if key1_guess not in key_count_dict:
+#                    key_count_dict[key1_guess] = 1
+#                else:
+#                    key_count_dict[key1_guess] += 1
+#
+#    key_count_arr = []
+#
+#    for k, v in key_count_dict.items():
+#        entry = (k, abs(v - 8) / 16)
+#
+#        entry_in = False
+#
+#        for i in range(len(key_count_arr)):
+#            e = key_count_arr[i]
+#
+#            if e[1] < entry[1]:
+#                key_count_arr.insert(i, entry)
+#                entry_in = True
+#
+#        if not entry_in:
+#            key_count_arr.append(entry)
+#
+#    print(key_count_dict)
 
 def build_linear_approximation_table(sbox):
     linear_approximation_table = [[0 for i in range(16)] for j in range(16)]
