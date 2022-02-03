@@ -22,43 +22,151 @@ KEY4 = [0xb, 0x5, 0x2, 0x0]
 def main():
     state = [0x4, 0xb, 0x1, 0xd];
     encrypted_state = encrypt(state, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4);
-    print(state)
-    print(encrypted_state)
 
     # Find linear approximations for the SBOX
     linear_approximation_table = build_linear_approximation_table(SBOX)
     best_linear_approximations = sort_linear_approximations(linear_approximation_table)
-    print(best_linear_approximations)
 
     # Find linear approximations for the whole cipher
     num_of_linear_approximations = 100
-    most_probable_linear_approximations = find_most_probable_linear_approximations(best_linear_approximations, num_of_linear_approximations)
+    most_probable_linear_approximations = find_all_linear_approximations(best_linear_approximations, num_of_linear_approximations)
 
     #break_keys()
 
-def find_linear_approximation(input_mask, best_linear_approximations):
-    input_mask_bits = split_nibbles_into_bits(input_mask)
-    print(input_mask_bits)
+def find_linear_approximation(input_mask, best_linear_approximations, round_num, active_sboxes, total_bias, trails):
+    # Base case
+    if round_num == 0:
+        # Now we use the pilling-up lemma to figure out the probability; used to rank approximations
+        
+        trail_probability = 0.5 + pow(2, active_sboxes - 1) * total_bias
 
-def find_most_probable_linear_approximations(best_linear_approximations, num_of_linear_approximations):
-    linear_approximations = []
+        trails.append([input_mask, trail_probability])
 
-    for i in range(16):
-        for j in range(16):
-            for k in range(16):
-                for l in range(16):
-                    if i == 0 and j == 0 and k == 0 and l == 0: continue
+        return
 
-                    input_mask = [i, j, k, l]
+    possible_outputs = get_possible_outputs(input_mask, best_linear_approximations)
 
-                    find_linear_approximation(input_mask, best_linear_approximations)
-                    #rounds, probability = find_linear_approximation(input_mask, best_linear_approximations)
+    for output0 in possible_outputs[0]:
+        for output1 in possible_outputs[1]:
+            for output2 in possible_outputs[2]:
+                for output3 in possible_outputs[3]:
+                    output_mask = []
 
-                    #linear_approximations.append((probability, input_xor, most_probable_output_xor))
+                    output_mask.append(output0[0])
+                    output_mask.append(output1[0])
+                    output_mask.append(output2[0])
+                    output_mask.append(output3[0])
 
-    #linear_approximations.sort(reverse=True)
+                    # setup a bunch of variables for recursion
+                    new_input_mask = permutate(output_mask, PBOX)
+                    new_active_sboxes = 0
+                    new_bias = 1
 
-    return linear_approximations[:num_of_linear_approximations]
+                    for nibble in output_mask:
+                        if nibble != 0:
+                            new_active_sboxes += 1
+
+                    if output0[0] != 0: new_bias *= output0[1]
+                    if output1[0] != 0: new_bias *= output1[1]
+                    if output2[0] != 0: new_bias *= output2[1]
+                    if output3[0] != 0: new_bias *= output3[1]
+
+                    active_sboxes += new_active_sboxes
+                    total_bias *= new_bias
+
+                    find_linear_approximation(new_input_mask, best_linear_approximations, round_num - 1, active_sboxes, total_bias, trails)
+
+                    active_sboxes -= new_active_sboxes
+                    total_bias /= new_bias
+
+def get_possible_outputs(input_mask, best_linear_approximations):
+    possible_outputs = [[(0, 0)], [(0, 0)], [(0, 0)], [(0, 0)]]
+
+    for i, nibble in enumerate(input_mask):
+        for la in best_linear_approximations:
+            sbox_input_mask = la[0]
+            sbox_output_mask = la[1]
+            entry = la[2]
+
+            if sbox_input_mask == nibble:
+                if possible_outputs[i][0] == (0, 0): # Replace default (0, 0)
+                    possible_outputs[i][0] = (sbox_output_mask, entry / 16) # entry / 16 gives the bias
+                else:
+                    possible_outputs[i].append((sbox_output_mask, entry / 16)) # entry / 16 gives the bias
+
+    return possible_outputs
+
+def find_all_linear_approximations(best_linear_approximations, num_of_linear_approximations):
+    all_trails = []
+
+    for i in range(4):
+        input_mask = [0, 0, 0, 0]
+
+        for nibble in range(16):
+            input_mask[i] = nibble
+
+            if input_mask == [0, 0, 0, 0]: continue
+
+            trails = []
+            find_linear_approximation(input_mask, best_linear_approximations, 3, 0, 1, trails)
+            
+            for j, t in enumerate(trails):
+                t.insert(0, list(input_mask)) # insert the input_mask at the start
+                trails[j] = tuple(t) # make it into a tuple
+            
+            all_trails += list(trails)
+
+    print(all_trails)
+    return all_trails
+
+
+            
+    #for i in range(16):
+    #    for j in range(16):
+    #        for k in range(16):
+    #            for l in range(16):
+    #                if i == 0 and j == 0 and k == 0 and l == 0: continue
+
+    #                input_mask = [i, j, k, l]
+    #                #find_linear_approximation(input_mask, best_linear_approximations)
+
+    #                #rounds, probability = find_linear_approximation(input_mask, best_linear_approximations)
+
+    #                #linear_approximations.append((probability, input_xor, most_probable_output_xor))
+
+    ##linear_approximations.sort(reverse=True)
+
+    #return linear_approximations[:num_of_linear_approximations]
+
+#def find_linear_approximation(output_mask, best_linear_approximations):
+#    new_input_mask = permutate(output_mask, PBOX)
+#
+#    for la in best_linear_approximations:
+#        input = la[0]
+#        output = la[1]
+#        output_mask = [0, 0, 0, 0]
+#
+#        for i, nibble in enumerate(new_input_mask):
+#            if input == nibble:
+#                output_mask[i] = output
+#                new_new_input_mask = permutate(output_mask, PBOX)
+#                print(new_new_input_mask)
+#
+#                # -------------- #
+#
+#                for la in best_linear_approximations:
+#                    input = la[0]
+#                    output = la[1]
+#                    output_mask = [0, 0, 0, 0]
+#
+#                    for i, nibble in enumerate(new_new_input_mask):
+#                        if input == nibble:
+#                            output_mask[i] = output
+#                            #print('\t' + str(output_mask))
+#                            new_new_new_input_mask = permutate(output_mask, PBOX)
+#
+#                            print('\t' + str(new_new_new_input_mask))
+
 
 #def break_keys():
 #    key_count_dict = {}
