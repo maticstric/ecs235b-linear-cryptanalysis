@@ -25,13 +25,74 @@ def main():
 
     # Find linear approximations for the SBOX
     linear_approximation_table = build_linear_approximation_table(SBOX)
-    best_linear_approximations = sort_linear_approximations(linear_approximation_table)
+    best_linear_approximations = sort_linear_approximation_table(linear_approximation_table)
 
     # Find linear approximations for the whole cipher
-    num_of_linear_approximations = 100
-    most_probable_linear_approximations = find_all_linear_approximations(best_linear_approximations, num_of_linear_approximations)
+    all_linear_approximations = find_all_linear_approximations(best_linear_approximations)
+    #sorted_linear_approximations = sort_linear_approximations(all_linear_approximations)
+    sorted_by_usefulness_linear_approximations = sort_linear_approximations_by_usefulness(all_linear_approximations)
+
+    print(sorted_by_usefulness_linear_approximations)
 
     #break_keys()
+
+def sort_linear_approximations_by_usefulness(all_linear_approximations):
+    all_linear_approximations_copy = all_linear_approximations[:]
+    sorted_by_usefulness_linear_approximations = []
+
+    # convert from probability to abs(bias), which is what we have to sort by
+    for la in all_linear_approximations_copy:
+        la[2] = abs(la[2] - 0.5)
+
+    # if there are a lot of active SBOXes in the output, it'll be difficult to
+    # brute force. So we say that if there's only one or two active SBOXes,
+    # we'll keep the probability the same. If three, divide by 3. If 4, set
+    # to 0. Those won't be useful
+    for la in all_linear_approximations_copy:
+        zeros = 0
+
+        for nibble in la[1]:
+            if nibble == 0:
+                zeros += 1
+
+        if zeros == 1:
+            la[2] /= 3
+        elif zeros == 0:
+            la[2] = 0
+
+    while len(all_linear_approximations_copy) > 0:
+        max_la = all_linear_approximations_copy[0]
+
+        for la in all_linear_approximations_copy:
+            if la[2] > max_la[2]:
+                max_la = la
+
+        sorted_by_usefulness_linear_approximations.append(max_la[:])
+        all_linear_approximations_copy.remove(max_la)
+
+    return sorted_by_usefulness_linear_approximations
+
+
+def sort_linear_approximations(all_linear_approximations):
+    all_linear_approximations_copy = all_linear_approximations[:]
+    sorted_linear_approximations = []
+
+    # convert from probability to abs(bias), which is what we have to sort by
+    for la in all_linear_approximations_copy:
+        la[2] = abs(la[2] - 0.5)
+
+    while len(all_linear_approximations_copy) > 0:
+        max_la = all_linear_approximations_copy[0]
+
+        for la in all_linear_approximations_copy:
+            if la[2] > max_la[2]:
+                max_la = la
+
+        sorted_linear_approximations.append(max_la[:])
+        all_linear_approximations_copy.remove(max_la)
+
+    return sorted_linear_approximations
+
 
 def find_linear_approximation(input_mask, best_linear_approximations, round_num, active_sboxes, total_bias, trails):
     # Base case
@@ -96,7 +157,7 @@ def get_possible_outputs(input_mask, best_linear_approximations):
 
     return possible_outputs
 
-def find_all_linear_approximations(best_linear_approximations, num_of_linear_approximations):
+def find_all_linear_approximations(best_linear_approximations):
     all_trails = []
 
     for i in range(4):
@@ -112,14 +173,11 @@ def find_all_linear_approximations(best_linear_approximations, num_of_linear_app
             
             for j, t in enumerate(trails):
                 t.insert(0, list(input_mask)) # insert the input_mask at the start
-                trails[j] = tuple(t) # make it into a tuple
+                trails[j] = t
             
             all_trails += list(trails)
 
-    print(all_trails)
     return all_trails
-
-
             
     #for i in range(16):
     #    for j in range(16):
@@ -243,10 +301,9 @@ def build_linear_approximation_table(sbox):
 
     return linear_approximation_table
 
-def sort_linear_approximations(linear_approximation_table):
+def sort_linear_approximation_table(linear_approximation_table):
     table_copy = [r[:] for r in linear_approximation_table]
     sorted_linear_approximations = []
-
 
     max = 0
     max_row = None
