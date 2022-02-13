@@ -29,25 +29,149 @@ def main():
 
     # Find linear approximations for the whole cipher
     all_linear_approximations = find_all_linear_approximations(best_linear_approximations)
-    #sorted_linear_approximations = sort_linear_approximations(all_linear_approximations)
-    sorted_by_usefulness_linear_approximations = sort_linear_approximations_by_usefulness(all_linear_approximations)
+    sorted_linear_approximations = sort_linear_approximations(all_linear_approximations)
 
-    print(sorted_by_usefulness_linear_approximations)
+    breaking_key_bits = find_which_key_bits_will_be_broken(sorted_linear_approximations[0][1])
+    break_key_bits(sorted_linear_approximations[0], breaking_key_bits)
 
-    #break_keys()
+def break_key_bits(linear_approximation, breaking_key_bits):
+    key_count_dict = {}
 
-def sort_linear_approximations_by_usefulness(all_linear_approximations):
+    for i in range(1000):
+        plaintext = choose_random_plaintext()
+        ciphertext = encrypt(plaintext, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4);
+
+        # This will modify the key_count_dict after key guesses
+        guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits)
+        
+        #for first_key_bits in range(16):
+        #    for second_key_bits in range(16):
+        #        first = ciphertext[0]
+        #        second = ciphertext[3]
+        #        
+        #        first = first ^ first_key_bits
+        #        second = second ^ second_key_bits
+
+        #        first = INV_SBOX[first]
+        #        second = INV_SBOX[second]
+
+        #        first_bits = nibble_to_bits(first)
+        #        second_bits = nibble_to_bits(second)
+        #        plaintext_bits = nibble_to_bits(plaintext[2])
+
+        #        bits = [first_bits[0], first_bits[1], first_bits[2],
+        #                second_bits[0], second_bits[1], second_bits[2],
+        #                plaintext_bits[0], plaintext_bits[2], plaintext_bits[3]]
+
+        #        xor = xor_bit_list(bits)
+        #        key_guess = str([first_key_bits, 0, 0, second_key_bits])
+
+        #        if xor == 1:
+        #            if key_guess not in key_count_dict:
+        #                key_count_dict[key_guess] = 1
+        #            else:
+        #                key_count_dict[key_guess] += 1
+
+    sorted_d = sorted(key_count_dict.items(), key=operator.itemgetter(1))
+    print(sorted_d)
+
+def guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits):
+    total_needed_key_guesses = 1
+
+    for bit in breaking_key_bits:
+        if bit == 1:
+            total_needed_key_guesses *= 2
+
+    for i in range(total_needed_key_guesses):
+        key_guess_bits = [0] * 16
+        div = total_needed_key_guesses / 2
+
+        # This for loop is hard to understand but it loops thorough all possible
+        # keys only for the bits where breaking_key_bits is set
+        for j in range(len(breaking_key_bits)):
+            if breaking_key_bits[j] == 1:
+                if i > div - 1 and i % (div * 2) >= div:
+                    key_guess_bits[j] = 1
+
+                div /= 2
+
+        key_guess = combine_bits_into_nibbles(key_guess_bits)
+        key_as_string = ' '.join(map(str, key_guess))
+
+        partially_decrypted = partially_decrypt(ciphertext, key_guess)
+        bits = []
+
+        for i in range(len(linear_approximation[0])):
+            la_nibble = linear_approximation[0][i]
+            pt_nibble = plaintext[i]
+
+            la_bits = nibble_to_bits(la_nibble)
+            pt_bits = nibble_to_bits(pt_nibble)
+
+            for j in range(len(la_bits)):
+                if la_bits[j] == 1:
+                    bits.append(pt_bits[j])
+
+        for i in range(len(linear_approximation[1])):
+            la_nibble = linear_approximation[1][i]
+            pd_nibble = partially_decrypted[i]
+
+            la_bits = nibble_to_bits(la_nibble)
+            pd_bits = nibble_to_bits(pd_nibble)
+
+            for j in range(len(la_bits)):
+                if la_bits[j] == 1:
+                    bits.append(pd_bits[j])
+
+        xor = xor_bit_list(bits)
+
+        if xor == 1:
+            if key_as_string not in key_count_dict:
+                key_count_dict[key_as_string] = 1
+            else:
+                key_count_dict[key_as_string] += 1
+    
+
+def find_which_key_bits_will_be_broken(ciphertext):
+    breaking_key_bits = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    for i in range(len(ciphertext)):
+        if ciphertext[i] != 0:
+            breaking_key_bits[i * 4] = 1
+            breaking_key_bits[i * 4 + 1] = 1
+            breaking_key_bits[i * 4 + 2] = 1
+            breaking_key_bits[i * 4 + 3] = 1
+
+    #if round_num < 3: # If round_num < 3 we need to take the permutation into account
+    #    tmp = breaking_key_bits.copy()
+
+    #    for i in range(len(breaking_key_bits)):
+    #        breaking_key_bits[i] = tmp[INV_PBOX[i]]
+        
+    return breaking_key_bits
+
+def partially_decrypt(ciphertext, round_key):
+    partially_decrypted_ciphertext = ciphertext[:]
+
+    partially_decrypted_ciphertext = add_round_key(partially_decrypted_ciphertext, round_key)
+    partially_decrypted_ciphertext = substitute(partially_decrypted_ciphertext, INV_SBOX)
+
+    return partially_decrypted_ciphertext
+
+
+def sort_linear_approximations(all_linear_approximations):
     all_linear_approximations_copy = all_linear_approximations[:]
-    sorted_by_usefulness_linear_approximations = []
+    sorted_linear_approximations = []
 
-    # convert from probability to abs(bias), which is what we have to sort by
+    # subtract 0.5 from probability since we want to sort by how
+    # far away the probability is from 0.5
     for la in all_linear_approximations_copy:
-        la[2] = abs(la[2] - 0.5)
+        la[2] = la[2] - 0.5
 
     # if there are a lot of active SBOXes in the output, it'll be difficult to
     # brute force. So we say that if there's only one or two active SBOXes,
     # we'll keep the probability the same. If three, divide by 3. If 4, set
-    # to 0. Those won't be useful
+    # to 0; those won't be useful
     for la in all_linear_approximations_copy:
         zeros = 0
 
@@ -64,35 +188,13 @@ def sort_linear_approximations_by_usefulness(all_linear_approximations):
         max_la = all_linear_approximations_copy[0]
 
         for la in all_linear_approximations_copy:
-            if la[2] > max_la[2]:
-                max_la = la
-
-        sorted_by_usefulness_linear_approximations.append(max_la[:])
-        all_linear_approximations_copy.remove(max_la)
-
-    return sorted_by_usefulness_linear_approximations
-
-
-def sort_linear_approximations(all_linear_approximations):
-    all_linear_approximations_copy = all_linear_approximations[:]
-    sorted_linear_approximations = []
-
-    # convert from probability to abs(bias), which is what we have to sort by
-    for la in all_linear_approximations_copy:
-        la[2] = abs(la[2] - 0.5)
-
-    while len(all_linear_approximations_copy) > 0:
-        max_la = all_linear_approximations_copy[0]
-
-        for la in all_linear_approximations_copy:
-            if la[2] > max_la[2]:
+            if abs(la[2]) > abs(max_la[2]):
                 max_la = la
 
         sorted_linear_approximations.append(max_la[:])
         all_linear_approximations_copy.remove(max_la)
 
     return sorted_linear_approximations
-
 
 def find_linear_approximation(input_mask, best_linear_approximations, round_num, active_sboxes, total_bias, trails):
     # Base case
@@ -178,92 +280,6 @@ def find_all_linear_approximations(best_linear_approximations):
             all_trails += list(trails)
 
     return all_trails
-            
-    #for i in range(16):
-    #    for j in range(16):
-    #        for k in range(16):
-    #            for l in range(16):
-    #                if i == 0 and j == 0 and k == 0 and l == 0: continue
-
-    #                input_mask = [i, j, k, l]
-    #                #find_linear_approximation(input_mask, best_linear_approximations)
-
-    #                #rounds, probability = find_linear_approximation(input_mask, best_linear_approximations)
-
-    #                #linear_approximations.append((probability, input_xor, most_probable_output_xor))
-
-    ##linear_approximations.sort(reverse=True)
-
-    #return linear_approximations[:num_of_linear_approximations]
-
-#def find_linear_approximation(output_mask, best_linear_approximations):
-#    new_input_mask = permutate(output_mask, PBOX)
-#
-#    for la in best_linear_approximations:
-#        input = la[0]
-#        output = la[1]
-#        output_mask = [0, 0, 0, 0]
-#
-#        for i, nibble in enumerate(new_input_mask):
-#            if input == nibble:
-#                output_mask[i] = output
-#                new_new_input_mask = permutate(output_mask, PBOX)
-#                print(new_new_input_mask)
-#
-#                # -------------- #
-#
-#                for la in best_linear_approximations:
-#                    input = la[0]
-#                    output = la[1]
-#                    output_mask = [0, 0, 0, 0]
-#
-#                    for i, nibble in enumerate(new_new_input_mask):
-#                        if input == nibble:
-#                            output_mask[i] = output
-#                            #print('\t' + str(output_mask))
-#                            new_new_new_input_mask = permutate(output_mask, PBOX)
-#
-#                            print('\t' + str(new_new_new_input_mask))
-
-
-#def break_keys():
-#    key_count_dict = {}
-#
-#    for i in range(10000):
-#        plaintext = choose_random_plaintext()
-#        ciphertext = encrypt(plaintext, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4);
-#
-#        for first_key_bits in range(16):
-#            for second_key_bits in range(16):
-#                first = ciphertext[1]
-#                second = ciphertext[3]
-#                
-#                first = first ^ first_key_bits
-#                second = second ^ second_key_bits
-#
-#                first = INV_SBOX[first]
-#                second = INV_SBOX[second]
-#
-#                first_bits = nibble_to_bits(first)
-#                second_bits = nibble_to_bits(second)
-#                plaintext_bits = nibble_to_bits(plaintext[1])
-#
-#                bits = [first_bits[1], first_bits[3],
-#                        second_bits[1], second_bits[3],
-#                        plaintext_bits[0], plaintext_bits[2], plaintext_bits[3]]
-#
-#                xor = xor_bit_list(bits)
-#                key_guess = str([0, first_key_bits, 0, second_key_bits])
-#
-#                if xor == 1:
-#                    if key_guess not in key_count_dict:
-#                        key_count_dict[key_guess] = 1
-#                    else:
-#                        key_count_dict[key_guess] += 1
-#
-#    sorted_d = sorted(key_count_dict.items(), key=operator.itemgetter(1))
-#    print(sorted_d)
-                     
 
 def build_linear_approximation_table(sbox):
     linear_approximation_table = [[0 for i in range(16)] for j in range(16)]
@@ -355,7 +371,7 @@ def substitute(state, sbox):
     new_state = state[:]
     
     for i in range(len(state)):
-        new_state[i] = SBOX[state[i]]
+        new_state[i] = sbox[state[i]]
 
     return new_state
 def permutate(state, pbox):
@@ -363,7 +379,7 @@ def permutate(state, pbox):
     new_state_as_bits = state_as_bits[:]
 
     for i in range(len(state_as_bits)):
-        new_state_as_bits[PBOX[i]] = state_as_bits[i]
+        new_state_as_bits[pbox[i]] = state_as_bits[i]
 
     return combine_bits_into_nibbles(new_state_as_bits)
 
