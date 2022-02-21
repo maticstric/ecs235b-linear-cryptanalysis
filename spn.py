@@ -1,5 +1,6 @@
 import random
 import operator
+import ast
 
 """ --- You can edit the variables below --- """
 
@@ -28,52 +29,87 @@ def main():
     best_linear_approximations = sort_linear_approximation_table(linear_approximation_table)
 
     # Find linear approximations for the whole cipher
-    all_linear_approximations = find_all_linear_approximations(best_linear_approximations)
-    sorted_linear_approximations = sort_linear_approximations(all_linear_approximations)
+    #all_linear_approximations = find_all_linear_approximations(best_linear_approximations)
+    f = open('sorted-linear-approximations', 'r')
+    content = f.read()
+    sorted_linear_approximations = ast.literal_eval(content) # convert string representation of list, back into list
+    f.close()
 
-    breaking_key_bits = find_which_key_bits_will_be_broken(sorted_linear_approximations[0][1])
-    break_key_bits(sorted_linear_approximations[0], breaking_key_bits)
+    #print(sorted_linear_approximations)
+
+
+    #print(sorted_linear_approximations[27])
+
+    #breaking_key_bits = find_which_key_bits_will_be_broken(sorted_linear_approximations[27][1])
+    #break_key_bits(sorted_linear_approximations[27], breaking_key_bits)
+
+    break_round_key(sorted_linear_approximations)
+
+def break_round_key(sorted_linear_approximations):
+    round_key = [0] * 16 # We'll be building this round key
+    sboxes_already_used = [False, False, False, False]
+
+    while not all(sboxes_already_used):
+        useful_linear_approximation = find_useful_linear_approximation(sorted_linear_approximations, sboxes_already_used)
+        print('Found useful linear approximation: ' + get_string_1d_hex(useful_linear_approximation[0]) + ' -> ' + get_string_1d_hex(useful_linear_approximation[1]))
+
+        breaking_key_bits = find_which_key_bits_will_be_broken(useful_linear_approximation[1])
+        broken_key_bits = break_key_bits(useful_linear_approximation, breaking_key_bits)
+
+        # Set the keybits which were broken
+        for i in range(len(breaking_key_bits)):
+            if breaking_key_bits[i] == 1:
+                round_key[i] = broken_key_bits[i]
+
+        # Mark which sboxes this used up
+        for i in range(4):
+            if useful_linear_approximation[1][i] != 0:
+                sboxes_already_used[i] = True
+
+    # We want it as list of nibbles at the end
+    round_key = combine_bits_into_nibbles(round_key)
+
+    print('*************************************')
+    print('  Found KEY' + ' = ' + get_string_1d_hex(round_key))
+    print('*************************************')
+
+    return round_key
+
+def find_useful_linear_approximation(sorted_linear_approximations, sboxes_already_used):
+    for la in sorted_linear_approximations:
+
+        # Check if this linear approximation will use any sboxes which we haven't used already
+        for i in range(4):
+            if la[1][i] != 0 and sboxes_already_used[i] == False: # Hit! We can use this one
+                return la
 
 def break_key_bits(linear_approximation, breaking_key_bits):
     key_count_dict = {}
 
-    for i in range(1000):
+    for i in range(3000):
         plaintext = choose_random_plaintext()
         ciphertext = encrypt(plaintext, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4);
 
         # This will modify the key_count_dict after key guesses
         guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits)
         
-        #for first_key_bits in range(16):
-        #    for second_key_bits in range(16):
-        #        first = ciphertext[0]
-        #        second = ciphertext[3]
-        #        
-        #        first = first ^ first_key_bits
-        #        second = second ^ second_key_bits
-
-        #        first = INV_SBOX[first]
-        #        second = INV_SBOX[second]
-
-        #        first_bits = nibble_to_bits(first)
-        #        second_bits = nibble_to_bits(second)
-        #        plaintext_bits = nibble_to_bits(plaintext[2])
-
-        #        bits = [first_bits[0], first_bits[1], first_bits[2],
-        #                second_bits[0], second_bits[1], second_bits[2],
-        #                plaintext_bits[0], plaintext_bits[2], plaintext_bits[3]]
-
-        #        xor = xor_bit_list(bits)
-        #        key_guess = str([first_key_bits, 0, 0, second_key_bits])
-
-        #        if xor == 1:
-        #            if key_guess not in key_count_dict:
-        #                key_count_dict[key_guess] = 1
-        #            else:
-        #                key_count_dict[key_guess] += 1
-
     sorted_d = sorted(key_count_dict.items(), key=operator.itemgetter(1))
-    print(sorted_d)
+
+    most_probable_key = None
+
+    # Extract the most likely key out of the dictonary
+    if abs(1500 - sorted_d[-1][1]) > abs(1500 - sorted_d[0][1]):
+        most_probable_key = sorted_d[-1][0]
+    else:
+        most_probable_key = sorted_d[0][0]
+
+    # Put key back into list form, since it was a string in the dict
+    final_key_guess = list(map(int, most_probable_key.split(' ')))
+
+    # We want it as array of bits, not nibbles
+    final_key_guess = split_nibbles_into_bits(final_key_guess)
+
+    return final_key_guess
 
 def guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits):
     total_needed_key_guesses = 1
@@ -170,7 +206,7 @@ def sort_linear_approximations(all_linear_approximations):
 
     # if there are a lot of active SBOXes in the output, it'll be difficult to
     # brute force. So we say that if there's only one or two active SBOXes,
-    # we'll keep the probability the same. If three, divide by 3. If 4, set
+    # we'll keep the probability the same. If three, divide by 5. If 4, set
     # to 0; those won't be useful
     for la in all_linear_approximations_copy:
         zeros = 0
@@ -180,7 +216,7 @@ def sort_linear_approximations(all_linear_approximations):
                 zeros += 1
 
         if zeros == 1:
-            la[2] /= 3
+            la[2] /= 5
         elif zeros == 0:
             la[2] = 0
 
@@ -259,27 +295,108 @@ def get_possible_outputs(input_mask, best_linear_approximations):
 
     return possible_outputs
 
+def remove_very_low_probabilities(linear_approximations):
+    better_linear_approximations = []
+
+    for la in linear_approximations:
+        if abs(la[2] - 0.5) > 0.01:
+            better_linear_approximations.append(la)
+
+    return better_linear_approximations
+
 def find_all_linear_approximations(best_linear_approximations):
+    for i in range(16):
+        all_trails = []
+
+        for j in range(16):
+            for k in range(16):
+                print(i, j, k)
+                for l in range(16):
+                    input_mask = [i, j, k, l]
+
+                    if input_mask == [0, 0, 0, 0]: continue
+
+                    trails = []
+                    find_linear_approximation(input_mask, best_linear_approximations, 3, 0, 1, trails)
+                    
+                    for m, t in enumerate(trails):
+                        t.insert(0, list(input_mask)) # insert the input_mask at the start
+                        trails[m] = t
+                    
+                    all_trails += list(trails)
+
+        # Because there are too many, and it takes a very long time, we will save
+        # each of them, for each i value, into their own file, and combine them later
+        # We also remove very low probabilites to conserve space/time
+        # We also sort them by their probabilities
+        better_linear_approximations = remove_very_low_probabilities(all_trails)
+        sorted_linear_approximations = sort_linear_approximations(better_linear_approximations)
+
+        f = open(f'la-{i}', 'w')
+        f.write(str(sorted_linear_approximations))
+        f.close()
+
     all_trails = []
 
-    for i in range(4):
-        input_mask = [0, 0, 0, 0]
+    for i in range(16):
+        f = open(f'la-{i}', 'r')
+        content = f.read()
+        lst = ast.literal_eval(content) # convert string representation of list, back into list
+        print(len(lst))
+        f.close()
 
-        for nibble in range(16):
-            input_mask[i] = nibble
+        all_trails = merge_linear_approximation_lists(all_trails, lst)
 
-            if input_mask == [0, 0, 0, 0]: continue
+    print(len(all_trails))
 
-            trails = []
-            find_linear_approximation(input_mask, best_linear_approximations, 3, 0, 1, trails)
-            
-            for j, t in enumerate(trails):
-                t.insert(0, list(input_mask)) # insert the input_mask at the start
-                trails[j] = t
-            
-            all_trails += list(trails)
+    f = open(f'sorted-linear-approximations', 'w')
+    f.write(str(all_trails))
+    f.close()
+
+    #for i in range(4):
+    #    input_mask = [0, 0, 0, 0]
+
+    #    for nibble in range(16):
+    #        input_mask[i] = nibble
+
+    #        if input_mask == [0, 0, 0, 0]: continue
+
+    #        trails = []
+    #        find_linear_approximation(input_mask, best_linear_approximations, 3, 0, 1, trails)
+    #        
+    #        for j, t in enumerate(trails):
+    #            t.insert(0, list(input_mask)) # insert the input_mask at the start
+    #            trails[j] = t
+    #        
+    #        all_trails += list(trails)
 
     return all_trails
+
+def merge_linear_approximation_lists(lst1, lst2):
+    i = 0
+    j = 0
+
+    merged_list = []
+
+    while i < len(lst1) and j < len(lst2):
+        if abs(lst1[i][2]) > abs(lst2[j][2]):
+            #print(lst1[i])
+            merged_list.append(lst1[i])
+            i += 1
+        else:
+            #print(lst2[j])
+            merged_list.append(lst2[j])
+            j += 1
+
+    while i < len(lst1):
+        merged_list.append(lst1[i])
+        i += 1
+
+    while j < len(lst2):
+        merged_list.append(lst2[j])
+        j += 1
+
+    return merged_list
 
 def build_linear_approximation_table(sbox):
     linear_approximation_table = [[0 for i in range(16)] for j in range(16)]
