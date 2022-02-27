@@ -6,6 +6,7 @@ import ast
 
 #SBOX = [0x9, 0xb, 0xc, 0x4, 0xa, 0x1, 0x2, 0x6, 0xd, 0x7, 0x3, 0x8, 0xf, 0xe, 0x0, 0x5]
 #SBOX = [0x3, 0xe, 0x1, 0xa, 0x4, 0x9, 0x5, 0x6, 0x8, 0xb, 0xf, 0x2, 0xd, 0xc, 0x0, 0x7]
+#INV_SBOX = [0xe, 0x2, 0xb, 0x0, 0x4, 0x6, 0xf, 0x8, 0x5, 0x3, 0x9, 0xd, 0xc, 0x1, 0xa]
 SBOX = [0xe, 0x4, 0xd, 0x1, 0x2, 0xf, 0xb, 0x8, 0x3, 0xa, 0x6, 0xc, 0x5, 0x9, 0x0, 0x7]
 INV_SBOX = [0xe, 0x3, 0x4, 0x8, 0x1, 0xc, 0xa, 0xf, 0x7, 0xd, 0x9, 0x6, 0xb, 0x2, 0x0, 0x5]
 PBOX = [0x0, 0x4, 0x8, 0xc, 0x1, 0x5, 0x9, 0xd, 0x2, 0x6, 0xa, 0xe, 0x3, 0x7, 0xb, 0xf]
@@ -29,32 +30,38 @@ def main():
     best_linear_approximations = sort_linear_approximation_table(linear_approximation_table)
 
     # Find linear approximations for the whole cipher
-    #all_linear_approximations = find_all_linear_approximations(best_linear_approximations)
-    f = open('sorted-linear-approximations', 'r')
+    #all_linear_approximations = find_all_linear_approximations(best_linear_approximations, 1)
+    f = open('linear-approximations/3-sorted-linear-approximations', 'r')
     content = f.read()
-    sorted_linear_approximations = ast.literal_eval(content) # convert string representation of list, back into list
+    three_sorted_linear_approximations = ast.literal_eval(content) # convert string representation of list, back into list
     f.close()
 
-    #print(sorted_linear_approximations)
-
-
-    #print(sorted_linear_approximations[27])
+    f = open('linear-approximations/2-sorted-linear-approximations', 'r')
+    content = f.read()
+    two_sorted_linear_approximations = ast.literal_eval(content) # convert string representation of list, back into list
+    f.close()
 
     #breaking_key_bits = find_which_key_bits_will_be_broken(sorted_linear_approximations[27][1])
     #break_key_bits(sorted_linear_approximations[27], breaking_key_bits)
 
-    break_round_key(sorted_linear_approximations)
+    round_keys = [[], [], [], [], []]
 
-def break_round_key(sorted_linear_approximations):
+    round_keys[4] = break_round_key(three_sorted_linear_approximations, 3, round_keys)
+    print(round_keys)
+    round_keys[3] = break_round_key(two_sorted_linear_approximations, 2, round_keys)
+
+def break_round_key(sorted_linear_approximations, round_num, round_keys):
     round_key = [0] * 16 # We'll be building this round key
     sboxes_already_used = [False, False, False, False]
 
     while not all(sboxes_already_used):
         useful_linear_approximation = find_useful_linear_approximation(sorted_linear_approximations, sboxes_already_used)
         print('Found useful linear approximation: ' + get_string_1d_hex(useful_linear_approximation[0]) + ' -> ' + get_string_1d_hex(useful_linear_approximation[1]))
+        print(useful_linear_approximation)
 
-        breaking_key_bits = find_which_key_bits_will_be_broken(useful_linear_approximation[1])
-        broken_key_bits = break_key_bits(useful_linear_approximation, breaking_key_bits)
+        breaking_key_bits = find_which_key_bits_will_be_broken(useful_linear_approximation[1], round_num)
+        print(breaking_key_bits)
+        broken_key_bits = break_key_bits(useful_linear_approximation, breaking_key_bits, round_num, round_keys)
 
         # Set the keybits which were broken
         for i in range(len(breaking_key_bits)):
@@ -83,35 +90,44 @@ def find_useful_linear_approximation(sorted_linear_approximations, sboxes_alread
             if la[1][i] != 0 and sboxes_already_used[i] == False: # Hit! We can use this one
                 return la
 
-def break_key_bits(linear_approximation, breaking_key_bits):
+def break_key_bits(linear_approximation, breaking_key_bits, round_num, round_keys):
     key_count_dict = {}
 
-    for i in range(3000):
+    #num_plaintexts = int(139913595.888 * abs(linear_approximation[2]) * abs(linear_approximation[2]) - 12707599.6022 * abs(linear_approximation[2]) + 263478.116585)
+
+    num_plaintexts = 1000
+    print(num_plaintexts)
+
+    for i in range(num_plaintexts):
         plaintext = choose_random_plaintext()
         ciphertext = encrypt(plaintext, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4);
 
         # This will modify the key_count_dict after key guesses
-        guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits)
+        guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits, round_num, round_keys)
+
+    for (k, v) in key_count_dict.items():
+        key_count_dict[k] = abs(v - (num_plaintexts // 2))
         
     sorted_d = sorted(key_count_dict.items(), key=operator.itemgetter(1))
+
+    print(sorted_d)
 
     most_probable_key = None
 
     # Extract the most likely key out of the dictonary
-    if abs(1500 - sorted_d[-1][1]) > abs(1500 - sorted_d[0][1]):
-        most_probable_key = sorted_d[-1][0]
-    else:
-        most_probable_key = sorted_d[0][0]
+    most_probable_key = sorted_d[-1][0]
 
     # Put key back into list form, since it was a string in the dict
     final_key_guess = list(map(int, most_probable_key.split(' ')))
+
+    print(final_key_guess)
 
     # We want it as array of bits, not nibbles
     final_key_guess = split_nibbles_into_bits(final_key_guess)
 
     return final_key_guess
 
-def guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits):
+def guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits, round_num, round_keys):
     total_needed_key_guesses = 1
 
     for bit in breaking_key_bits:
@@ -134,7 +150,9 @@ def guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, 
         key_guess = combine_bits_into_nibbles(key_guess_bits)
         key_as_string = ' '.join(map(str, key_guess))
 
-        partially_decrypted = partially_decrypt(ciphertext, key_guess)
+        round_keys[round_num + 1] = key_guess
+
+        partially_decrypted = partially_decrypt(ciphertext, round_num, round_keys)
         bits = []
 
         for i in range(len(linear_approximation[0])):
@@ -168,7 +186,7 @@ def guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, 
                 key_count_dict[key_as_string] += 1
     
 
-def find_which_key_bits_will_be_broken(ciphertext):
+def find_which_key_bits_will_be_broken(ciphertext, round_num):
     breaking_key_bits = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     for i in range(len(ciphertext)):
@@ -178,19 +196,32 @@ def find_which_key_bits_will_be_broken(ciphertext):
             breaking_key_bits[i * 4 + 2] = 1
             breaking_key_bits[i * 4 + 3] = 1
 
-    #if round_num < 3: # If round_num < 3 we need to take the permutation into account
-    #    tmp = breaking_key_bits.copy()
+    if round_num < 3: # If round_num < 3 we need to take the permutation into account
+        tmp = breaking_key_bits.copy()
 
-    #    for i in range(len(breaking_key_bits)):
-    #        breaking_key_bits[i] = tmp[INV_PBOX[i]]
+        for i in range(len(breaking_key_bits)):
+            breaking_key_bits[i] = tmp[INV_PBOX[i]]
         
     return breaking_key_bits
 
-def partially_decrypt(ciphertext, round_key):
+def partially_decrypt(ciphertext, round_num, round_keys):
     partially_decrypted_ciphertext = ciphertext[:]
 
-    partially_decrypted_ciphertext = add_round_key(partially_decrypted_ciphertext, round_key)
-    partially_decrypted_ciphertext = substitute(partially_decrypted_ciphertext, INV_SBOX)
+    if round_num <= 3:
+        partially_decrypted_ciphertext = add_round_key(partially_decrypted_ciphertext, round_keys[4])
+        partially_decrypted_ciphertext = substitute(partially_decrypted_ciphertext, INV_SBOX)
+    if round_num <= 2:
+        partially_decrypted_ciphertext = add_round_key(partially_decrypted_ciphertext, round_keys[3])
+        partially_decrypted_ciphertext = permutate(partially_decrypted_ciphertext, INV_PBOX)
+        partially_decrypted_ciphertext = substitute(partially_decrypted_ciphertext, INV_SBOX)
+    if round_num <= 1:
+        partially_decrypted_ciphertext = add_round_key(partially_decrypted_ciphertext, round_keys[2])
+        partially_decrypted_ciphertext = permutate(partially_decrypted_ciphertext, INV_PBOX)
+        partially_decrypted_ciphertext = substitute(partially_decrypted_ciphertext, INV_SBOX)
+    if round_num <= 0:
+        partially_decrypted_ciphertext = add_round_key(partially_decrypted_ciphertext, round_keys[1])
+        partially_decrypted_ciphertext = permutate(partially_decrypted_ciphertext, INV_PBOX)
+        partially_decrypted_ciphertext = substitute(partially_decrypted_ciphertext, INV_SBOX)
 
     return partially_decrypted_ciphertext
 
@@ -295,16 +326,25 @@ def get_possible_outputs(input_mask, best_linear_approximations):
 
     return possible_outputs
 
-def remove_very_low_probabilities(linear_approximations):
+def remove_very_low_probabilities(linear_approximations, rounds):
     better_linear_approximations = []
 
+    very_low = 0
+
+    if rounds == 3:
+        very_low = 0.01
+    elif rounds == 2:
+        very_low = 0.06
+    elif rounds == 1:
+        very_low = 0.1
+
     for la in linear_approximations:
-        if abs(la[2] - 0.5) > 0.01:
+        if abs(la[2] - 0.5) > very_low:
             better_linear_approximations.append(la)
 
     return better_linear_approximations
 
-def find_all_linear_approximations(best_linear_approximations):
+def find_all_linear_approximations(best_linear_approximations, rounds):
     for i in range(16):
         all_trails = []
 
@@ -317,7 +357,7 @@ def find_all_linear_approximations(best_linear_approximations):
                     if input_mask == [0, 0, 0, 0]: continue
 
                     trails = []
-                    find_linear_approximation(input_mask, best_linear_approximations, 3, 0, 1, trails)
+                    find_linear_approximation(input_mask, best_linear_approximations, rounds, 0, 1, trails)
                     
                     for m, t in enumerate(trails):
                         t.insert(0, list(input_mask)) # insert the input_mask at the start
@@ -325,21 +365,23 @@ def find_all_linear_approximations(best_linear_approximations):
                     
                     all_trails += list(trails)
 
+
         # Because there are too many, and it takes a very long time, we will save
         # each of them, for each i value, into their own file, and combine them later
         # We also remove very low probabilites to conserve space/time
         # We also sort them by their probabilities
-        better_linear_approximations = remove_very_low_probabilities(all_trails)
+        better_linear_approximations = remove_very_low_probabilities(all_trails, rounds)
+        print(len(better_linear_approximations))
         sorted_linear_approximations = sort_linear_approximations(better_linear_approximations)
 
-        f = open(f'la-{i}', 'w')
+        f = open(f'la-{rounds}-{i}', 'w')
         f.write(str(sorted_linear_approximations))
         f.close()
 
     all_trails = []
 
     for i in range(16):
-        f = open(f'la-{i}', 'r')
+        f = open(f'la-{rounds}-{i}', 'r')
         content = f.read()
         lst = ast.literal_eval(content) # convert string representation of list, back into list
         print(len(lst))
@@ -349,7 +391,7 @@ def find_all_linear_approximations(best_linear_approximations):
 
     print(len(all_trails))
 
-    f = open(f'sorted-linear-approximations', 'w')
+    f = open(f'{rounds}-sorted-linear-approximations', 'w')
     f.write(str(all_trails))
     f.close()
 
