@@ -22,8 +22,8 @@ KEY4 = [0xb, 0x5, 0x2, 0x0]
 
 
 def main():
-    state = [0x4, 0xb, 0x1, 0xd];
-    encrypted_state = encrypt(state, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4);
+    state = [0x4, 0xb, 0x1, 0xd]
+    encrypted_state = encrypt(state, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4)
 
     # Find linear approximations for the SBOX
     linear_approximation_table = build_linear_approximation_table(SBOX)
@@ -46,12 +46,24 @@ def main():
 
     round_keys = [[], [], [], [], []]
 
-    round_keys[4] = break_round_key(three_sorted_linear_approximations, 3, round_keys)
-    print(round_keys)
-    round_keys[3] = break_round_key(two_sorted_linear_approximations, 2, round_keys)
+    fifth_round_key_possibilities = break_round_key(three_sorted_linear_approximations, 3, round_keys)
+    #fifth_round_key_possibilities = [[11, 5, 2, 0]]
+
+    for k5 in fifth_round_key_possibilities:
+        round_keys[4] = k5
+
+        fourth_round_key_possibilites = break_round_key(two_sorted_linear_approximations, 2, round_keys)
+        
+        for k4 in fourth_round_key_possibilites:
+            round_keys[3] = k4
+            
+            print('-------------------')
+            print(round_keys)
+            print('-------------------')
 
 def break_round_key(sorted_linear_approximations, round_num, round_keys):
-    round_key = [0] * 16 # We'll be building this round key
+    #round_key = [0] * 16 # We'll be building this round key
+    possible_round_keys = [[0] * 16]
     sboxes_already_used = [False, False, False, False]
 
     while not all(sboxes_already_used):
@@ -60,13 +72,29 @@ def break_round_key(sorted_linear_approximations, round_num, round_keys):
         print(useful_linear_approximation)
 
         breaking_key_bits = find_which_key_bits_will_be_broken(useful_linear_approximation[1], round_num)
-        print(breaking_key_bits)
         broken_key_bits = break_key_bits(useful_linear_approximation, breaking_key_bits, round_num, round_keys)
 
-        # Set the keybits which were broken
-        for i in range(len(breaking_key_bits)):
-            if breaking_key_bits[i] == 1:
-                round_key[i] = broken_key_bits[i]
+        #possible_round_keys_copy = possible_round_keys[:]
+        new_possible_round_keys = []
+
+        for j in range(len(broken_key_bits)):
+            possible_round_key = [0] * 16
+
+            # Set the keybits which were broken
+            for i in range(len(breaking_key_bits)):
+                if breaking_key_bits[i] == 1:
+                    possible_round_key[i] = broken_key_bits[j][i]
+
+            # Combine the old prks with the current ones
+            for old_prk in possible_round_keys:
+                new_prk = [0] * 16
+
+                for i in range(16):
+                    new_prk[i] = old_prk[i] | possible_round_key[i]
+
+                new_possible_round_keys.append(new_prk)
+
+        possible_round_keys = new_possible_round_keys[:]
 
         # Mark which sboxes this used up
         for i in range(4):
@@ -74,13 +102,16 @@ def break_round_key(sorted_linear_approximations, round_num, round_keys):
                 sboxes_already_used[i] = True
 
     # We want it as list of nibbles at the end
-    round_key = combine_bits_into_nibbles(round_key)
+    for i in range(len(possible_round_keys)):
+        possible_round_keys[i] = combine_bits_into_nibbles(possible_round_keys[i])
 
-    print('*************************************')
-    print('  Found KEY' + ' = ' + get_string_1d_hex(round_key))
-    print('*************************************')
+    #print('*************************************')
+    #print('  Found KEY' + ' = ' + get_string_1d_hex(round_key))
+    #print('*************************************')
 
-    return round_key
+    #print(possible_round_keys)
+
+    return possible_round_keys
 
 def find_useful_linear_approximation(sorted_linear_approximations, sboxes_already_used):
     for la in sorted_linear_approximations:
@@ -95,12 +126,12 @@ def break_key_bits(linear_approximation, breaking_key_bits, round_num, round_key
 
     #num_plaintexts = int(139913595.888 * abs(linear_approximation[2]) * abs(linear_approximation[2]) - 12707599.6022 * abs(linear_approximation[2]) + 263478.116585)
 
-    num_plaintexts = 1000
+    num_plaintexts = get_num_plaintexts(abs(linear_approximation[2]))
     print(num_plaintexts)
 
     for i in range(num_plaintexts):
         plaintext = choose_random_plaintext()
-        ciphertext = encrypt(plaintext, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4);
+        ciphertext = encrypt(plaintext, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4)
 
         # This will modify the key_count_dict after key guesses
         guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits, round_num, round_keys)
@@ -110,22 +141,33 @@ def break_key_bits(linear_approximation, breaking_key_bits, round_num, round_key
         
     sorted_d = sorted(key_count_dict.items(), key=operator.itemgetter(1))
 
-    print(sorted_d)
+    most_probable_keys = []
 
-    most_probable_key = None
+    # Count for the most likely key out of the dictonary
+    max = sorted_d[-1][1]
 
-    # Extract the most likely key out of the dictonary
-    most_probable_key = sorted_d[-1][0]
+    # There might be other keys which are equally likely
+    for e in sorted_d:
+        if e[1] == max:
+            most_probable_keys.append(e[0])
 
-    # Put key back into list form, since it was a string in the dict
-    final_key_guess = list(map(int, most_probable_key.split(' ')))
-
-    print(final_key_guess)
+    # Put keys back into list form, since it was a string in the dict
+    for i in range(len(most_probable_keys)):
+        most_probable_keys[i] = list(map(int, most_probable_keys[i].split(' ')))
 
     # We want it as array of bits, not nibbles
-    final_key_guess = split_nibbles_into_bits(final_key_guess)
+    final_key_guesses = []
 
-    return final_key_guess
+    for k in most_probable_keys:
+        final_key_guesses.append(split_nibbles_into_bits(k))
+
+    return final_key_guesses
+
+def get_num_plaintexts(p):
+    # This equation comes from multiple example points
+    num_plaintexts = (-3.62998 * pow(10, 10) * pow(p, 5)) + (1.58026 * pow(10, 10) * pow(p, 4)) - (2.551 * pow(10, 9) * pow(p, 3)) + (1.89757 * pow(10, 8) * pow(p, 2)) - (6.5479 * pow(10, 6) * p) + 86173.6
+
+    return round(num_plaintexts)
 
 def guess_key_bits(linear_approximation, plaintext, ciphertext, key_count_dict, breaking_key_bits, round_num, round_keys):
     total_needed_key_guesses = 1
@@ -472,7 +514,7 @@ def build_linear_approximation_table(sbox):
                 if xor == 0:
                     xor_0_counter += 1
 
-            linear_approximation_table[input_sum][output_sum] = xor_0_counter - 8;
+            linear_approximation_table[input_sum][output_sum] = xor_0_counter - 8
 
     return linear_approximation_table
 
