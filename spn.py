@@ -19,25 +19,21 @@ KEY2 = [0x4, 0x5, 0x2, 0xf]
 KEY3 = [0x6, 0xf, 0xf, 0x1]
 KEY4 = [0xb, 0x5, 0x2, 0x0]
 
-KEY0_INT = 0x1a6d
-KEY1_INT = 0x2ac2
-KEY2_INT = 0x452f
-KEY3_INT = 0x6ff1
-KEY4_INT = 0xb520
-
 """ ---------------------------------------- """
 
 
 def main():
-    #state = [0x4, 0xb, 0x1, 0xd]
-    #encrypted_state = encrypt(state, SBOX, PBOX, KEY0, KEY1, KEY2, KEY3, KEY4)
+    start = time.time()
 
     # Find linear approximations for the SBOX
-    linear_approximation_table = build_linear_approximation_table(SBOX)
-    best_linear_approximations = sort_linear_approximation_table(linear_approximation_table)
+    #linear_approximation_table = build_linear_approximation_table(SBOX)
+    #best_linear_approximations = sort_linear_approximation_table(linear_approximation_table)
 
     # Find linear approximations for the whole cipher
-    #all_linear_approximations = find_all_linear_approximations(best_linear_approximations, 1)
+    #all_linear_approximations = find_all_linear_approximations(best_linear_approximations, 3)
+
+    print('Loading in all linear approximations... ', end='', flush=True)
+
     f = open('linear-approximations/3-sorted-linear-approximations', 'r')
     content = f.read()
     three_sorted_linear_approximations = ast.literal_eval(content) # convert string representation of list, back into list
@@ -52,27 +48,40 @@ def main():
     content = f.read()
     one_sorted_linear_approximations = ast.literal_eval(content) # convert string representation of list, back into list
     f.close()
+    print('done\n------')
 
     #breaking_key_bits = find_which_key_bits_will_be_broken(sorted_linear_approximations[27][1])
     #break_key_bits(sorted_linear_approximations[27], breaking_key_bits)
 
     round_keys = [[], [], [], [], []]
-    start = time.time()
 
+    print('Breaking 5th round key. This may take a few seconds...')
     fifth_round_key_possibilities = break_round_key(three_sorted_linear_approximations, 3, round_keys)
-    #fifth_round_key_possibilities = [[11, 5, 2, 0]]
+    print('------\nFound 5th key possibilities:')
+    for key in fifth_round_key_possibilities:
+        print(get_string_1d_hex(key))
+    print('------')
 
     for k5 in fifth_round_key_possibilities:
         round_keys[4] = k5
 
+        print('  Breaking 4th round key with KEY5 = ' + get_string_1d_hex(k5))
         fourth_round_key_possibilities = break_round_key(two_sorted_linear_approximations, 2, round_keys)
-        #fourth_round_key_possibilities = [[6, 15, 15, 1]]
+        print('  ------\n  Found 4th key possibilities:')
+        for key in fourth_round_key_possibilities:
+            print('  ' + get_string_1d_hex(key))
+        print('  ------')
         
         for k4 in fourth_round_key_possibilities:
             round_keys[3] = k4
 
+            print('    Breaking 3rd round key with KEY5 = ' + get_string_1d_hex(k5) + ', KEY4 = ' + get_string_1d_hex(k4))
             third_round_key_possibilities = break_round_key(one_sorted_linear_approximations, 1, round_keys)
-            #third_round_key_possibilities = [[4, 5, 2, 15]]
+            print('    ------\n    Found 3rd key possibilities:')
+            for key in fourth_round_key_possibilities:
+                print('    ' + get_string_1d_hex(key))
+            print('    ------')
+            print('    Finding 2nd and 1st key possibilities... ', end='', flush=True)
 
             for k3 in third_round_key_possibilities:
                 round_keys[2] = k3
@@ -82,11 +91,22 @@ def main():
                 get_last_two_keys(round_keys)
 
                 if validate_round_keys(round_keys):
+                    print('RIGHT')
                     end = time.time()
                     print('\nFound all round keys in ' + str(round(end - start, 2)) + ' seconds!\n') 
-                    print(round_keys)
+
+                    print('*************************************')
+                    for i in range(len(round_keys)):
+                        key = round_keys[i]
+
+                        print('     KEY' + str(i) + ' = ' + get_string_1d_hex(key))
+                    print('*************************************')
 
                     return
+
+            print('WRONG\n    ------')
+
+    print('\n**********\nUnable to find correct round keys.\nLinear cryptanalysis is probabilistic so it might not always get the correct answer.\nPlease run again.\n**********')
 
 
 def validate_round_keys(round_keys):
@@ -171,8 +191,9 @@ def break_round_key(sorted_linear_approximations, round_num, round_keys):
 
     while not all(sboxes_already_used):
         useful_linear_approximation = find_useful_linear_approximation(sorted_linear_approximations, sboxes_already_used)
-        print('Found useful linear approximation: ' + get_string_1d_hex(useful_linear_approximation[0]) + ' -> ' + get_string_1d_hex(useful_linear_approximation[1]))
-        print(useful_linear_approximation)
+        for i in range(3 - round_num):
+            print('  ', end='')
+        print('Useful linear approximation (' + str(round_num + 1) + ' round) with bias ' + '{:.3f}'.format(abs(useful_linear_approximation[2])) + ': ' + state_to_hex(useful_linear_approximation[0]) + ' -> ' + state_to_hex(useful_linear_approximation[1]))
 
         breaking_key_bits = find_which_key_bits_will_be_broken(useful_linear_approximation[1], round_num)
         broken_key_bits = break_key_bits(useful_linear_approximation, breaking_key_bits, round_num, round_keys)
@@ -207,12 +228,6 @@ def break_round_key(sorted_linear_approximations, round_num, round_keys):
     for i in range(len(possible_round_keys)):
         possible_round_keys[i] = combine_bits_into_nibbles(possible_round_keys[i])
 
-    #print('*************************************')
-    #print('  Found KEY' + ' = ' + get_string_1d_hex(round_key))
-    #print('*************************************')
-
-    #print(possible_round_keys)
-
     return possible_round_keys
 
 def find_useful_linear_approximation(sorted_linear_approximations, sboxes_already_used):
@@ -227,7 +242,6 @@ def break_key_bits(linear_approximation, breaking_key_bits, round_num, round_key
     key_count_dict = {}
 
     num_plaintexts = get_num_plaintexts(abs(linear_approximation[2]))
-    print(num_plaintexts)
 
     for i in range(num_plaintexts):
         plaintext = choose_random_plaintext()
@@ -265,7 +279,6 @@ def break_key_bits(linear_approximation, breaking_key_bits, round_num, round_key
 
 def get_num_plaintexts(p):
     # This equation comes from multiple example points
-    #num_plaintexts = (-3.62998 * pow(10, 10) * pow(p, 5)) + (1.58026 * pow(10, 10) * pow(p, 4)) - (2.551 * pow(10, 9) * pow(p, 3)) + (1.89757 * pow(10, 8) * pow(p, 2)) - (6.5479 * pow(10, 6) * p) + 86173.6
     num_plaintexts = (-7.60197 * pow(10, 10) * pow(p, 5)) + (3.34827 * pow(10, 10) * pow(p, 4)) - (5.48666 * pow(10, 9) * pow(p, 3)) + (4.15299 * pow(10, 8) * pow(p, 2)) - (1.45375 * pow(10, 7) * p) + 190506
 
     # We want an integer
@@ -549,23 +562,6 @@ def find_all_linear_approximations(best_linear_approximations, rounds):
     f.write(str(all_trails))
     f.close()
 
-    #for i in range(4):
-    #    input_mask = [0, 0, 0, 0]
-
-    #    for nibble in range(16):
-    #        input_mask[i] = nibble
-
-    #        if input_mask == [0, 0, 0, 0]: continue
-
-    #        trails = []
-    #        find_linear_approximation(input_mask, best_linear_approximations, 3, 0, 1, trails)
-    #        
-    #        for j, t in enumerate(trails):
-    #            t.insert(0, list(input_mask)) # insert the input_mask at the start
-    #            trails[j] = t
-    #        
-    #        all_trails += list(trails)
-
     return all_trails
 
 def merge_linear_approximation_lists(lst1, lst2):
@@ -576,11 +572,9 @@ def merge_linear_approximation_lists(lst1, lst2):
 
     while i < len(lst1) and j < len(lst2):
         if abs(lst1[i][2]) > abs(lst2[j][2]):
-            #print(lst1[i])
             merged_list.append(lst1[i])
             i += 1
         else:
-            #print(lst2[j])
             merged_list.append(lst2[j])
             j += 1
 
@@ -657,45 +651,6 @@ def sort_linear_approximation_table(linear_approximation_table):
             max = 0
 
 """ SPN """
-
-def quick_encrypt(state, sbox, pbox, key0, key1, key2, key3, key4):
-    # state is just an integer which will make this quicker but less readable
-    state ^= key0
-    state = quick_substitute(state, sbox)
-    state = quick_permutate(state, pbox)
-
-    state ^= key1
-    state = quick_substitute(state, sbox)
-    state = quick_permutate(state, pbox)
-
-    state ^= key2
-    state = quick_substitute(state, sbox)
-    state = quick_permutate(state, pbox)
-
-    state ^= key3
-    state = quick_substitute(state, sbox)
-
-    state ^= key4
-
-    return state
-
-def quick_permutate(state, pbox):
-    new_state = 0
-
-    for i in pbox:
-        new_state |= ((state >> i) & 1) << pbox[i]
-
-    return new_state
-
-def quick_substitute(state, sbox):
-    # state is just an integer which will make this quicker but less readable
-
-    new_state = sbox[state >> 12] << 12
-    new_state |= sbox[(state & 0x0f00) >> 8] << 8
-    new_state |= sbox[(state & 0x00f0) >> 4] << 4
-    new_state |= sbox[(state & 0x000f)]
-
-    return new_state
 
 def encrypt(state, sbox, pbox, key0, key1, key2, key3, key4):
     new_state = state[:]
@@ -822,6 +777,18 @@ def get_string_1d_hex(arr):
     string += ']'
 
     return string
+
+def state_to_hex(arr):
+    string = ''
+
+    for i in range(len(arr)):
+        if i == 0:
+            string += '{:#x}'.format(arr[i])
+        else:
+            string += '{:x}'.format(arr[i])
+
+    return string
+
 
 if __name__=="__main__":
     main()
