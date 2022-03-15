@@ -39,14 +39,19 @@ def main():
     """ --- Uncomment lines below to find new linear approximations --- """
     """ ----- Remember to put them into appropriate folders after ----- """
 
-    # Find linear approximations for the SBOX
+    ## Find linear approximations for the SBOX
     #linear_approximation_table = build_linear_approximation_table(SBOX)
     #best_linear_approximations = sort_linear_approximation_table(linear_approximation_table)
 
-    # Find linear approximations for the whole cipher
+    ## Find linear approximations for the whole cipher
     #find_all_linear_approximations(best_linear_approximations, 3)
     #find_all_linear_approximations(best_linear_approximations, 2)
     #find_all_linear_approximations(best_linear_approximations, 1)
+
+    #end = time.time()
+    #print('\nFound all linear approximations in ' + str(round(end - start, 2)) + ' seconds!\n') 
+    #
+    #return
 
     """ --------------------------------------------------------------- """
 

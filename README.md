@@ -11,7 +11,7 @@ There are two major parts to the code:
 2. Breaking an SPN with differential cryptanalysis
 
 ## `linear-approximations`
-This directory includes the precomputed linear approximations for the default SBOXes and PBOXes in `spn.py`. As explained in the associated paper, computing these can take a long time. We wanted to make running the SPN breaker as easy as possible so, instead of computing them every time, we precompute them and save the results into files located in this directory.
+This directory includes the precomputed linear approximations for the default SBOXes and PBOXes in `spn.py`. As explained in the associated paper, computing these can take a long time (our code takes about 15 minutes). We wanted to make running the SPN breaker as easy as possible so, instead of computing them every time, we precompute them and save the results into files located in this directory.
 
 The three important files in the directory are `3-sorted-linear-approximations`, `2-sorted-linear-approximations`, and `1-sorted-linear-approximations`. These include the 3-, 2-, and 1-round linear approximations sorted by their bias. The other files in the subdirectories are simply there because we use them to compute the important ones. They could be deleted but we decided to keep them for debugging purposes.
 
